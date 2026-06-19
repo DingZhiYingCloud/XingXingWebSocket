@@ -1,0 +1,11 @@
+-i https://pypi.tuna.tsinghua.edu.cn/simple
+Django>=6.0
+channels>=4.0
+daphne>=4.0
+python-dotenv>=1.0
+django-cors-headers>=4.0
+cryptography>=3.4
+requests>=2.0
+
+# ---- 生产环境可选 ----
+channels_redis>=4.0    # 如需 Redis 作为 channel layer（多进程部署必须）

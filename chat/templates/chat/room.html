@@ -1,0 +1,180 @@
+{% extends "chat/base.html" %}
+{% load static %}
+
+{% block title %}房间 {{ room_name }} - 聊天中{% endblock %}
+
+{% block content %}
+<div style="display: flex; gap: 16px; flex-wrap: wrap;">
+    {# ===== 消息区域 ===== #}
+    <div style="flex: 2; min-width: 300px;">
+        <div class="card">
+            <div class="card-title">
+                💬 房间：{{ room_name }}
+                <span id="connectionStatus" style="font-size: 12px; color: #f59e0b; margin-left: auto;">
+                    连接中...
+                </span>
+            </div>
+            <div id="messages" class="messages"></div>
+            <div class="input-area">
+                <input type="text" id="chatInput" placeholder="输入消息..." autofocus>
+                <button id="sendBtn" class="btn btn-primary btn-sm">发送</button>
+            </div>
+        </div>
+    </div>
+
+    {# ===== 侧边栏信息 ===== #}
+    <div style="flex: 1; min-width: 200px;">
+        <div class="card">
+            <div class="card-title">👥 在线用户</div>
+            <ul id="userList" class="user-list">
+                <li style="color: #64748b; font-size: 13px; justify-content: center;">等待连接...</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const roomName = "{{ room_name|escapejs }}";
+        const params = new URLSearchParams(window.location.search);
+        const username = params.get('username') || '匿名用户';
+
+        // DOM 元素
+        const messagesEl = document.getElementById('messages');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const statusEl = document.getElementById('connectionStatus');
+        const userListEl = document.getElementById('userList');
+
+        // WebSocket 连接
+        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const wsUrl = `${protocol}${window.location.host}/ws/chat/${roomName}/?username=${encodeURIComponent(username)}`;
+        let ws = null;
+        let reconnectTimer = null;
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            statusEl.textContent = '连接中...';
+            statusEl.style.color = '#f59e0b';
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                statusEl.textContent = '✅ 已连接';
+                statusEl.style.color = '#22c55e';
+                chatInput.disabled = false;
+                sendBtn.disabled = false;
+                chatInput.focus();
+            };
+
+            ws.onclose = function() {
+                statusEl.textContent = '❌ 已断开，重连中...';
+                statusEl.style.color = '#ef4444';
+                chatInput.disabled = true;
+                sendBtn.disabled = true;
+                scheduleReconnect();
+            };
+
+            ws.onerror = function() {
+                statusEl.textContent = '⚠️ 连接错误';
+                statusEl.style.color = '#ef4444';
+            };
+
+            ws.onmessage = function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    handleMessage(data);
+                } catch (err) {
+                    console.error('消息解析失败:', err);
+                }
+            };
+        }
+
+        function scheduleReconnect() {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connect, 3000);
+        }
+
+        // ========== 消息渲染 ==========
+        function handleMessage(data) {
+            const type = data.type;
+
+            if (type === 'chat.message') {
+                const isSelf = data.username === username;
+                appendMessage(data.text, data.username, data.timestamp,
+                    isSelf ? 'msg-self' : 'msg-user');
+            } else if (type === 'script.broadcast') {
+                appendMessage(data.text, '📢 系统广播', data.timestamp, 'msg-broadcast');
+            } else if (type === 'system.info') {
+                appendMessage(data.text, '', '', 'msg-system');
+            } else if (type === 'script.private') {
+                const isSentTo = data.from.startsWith('→ ');
+                if (isSentTo) {
+                    appendMessage(data.text, data.from, data.timestamp, 'msg-private-sent');
+                } else {
+                    appendMessage(data.text, `💬 ${data.from}`, data.timestamp, 'msg-private');
+                }
+            } else if (type === 'script.user_list') {
+                renderUserList(data.users);
+            }
+        }
+
+        function appendMessage(text, author, timestamp, className) {
+            const div = document.createElement('div');
+            div.className = `msg ${className}`.trim();
+
+            let html = '';
+            if (author) {
+                html += `<div class="msg-author">${escapeHtml(author)}</div>`;
+            }
+            html += `<div>${escapeHtml(text)}</div>`;
+            if (timestamp) {
+                html += `<div class="msg-time">${timestamp}</div>`;
+            }
+            div.innerHTML = html;
+            messagesEl.appendChild(div);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function renderUserList(users) {
+            if (!users || users.length === 0) {
+                userListEl.innerHTML = '<li style="color: #64748b; font-size: 13px; justify-content: center;">暂无其他用户</li>';
+                return;
+            }
+            userListEl.innerHTML = users.map(u =>
+                `<li>
+                    <span>${escapeHtml(u.username)}</span>
+                    <span class="user-status">● 在线</span>
+                </li>`
+            ).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ========== 发送消息 ==========
+        function sendMessage() {
+            const text = chatInput.value.trim();
+            if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+            ws.send(JSON.stringify({
+                type: 'chat.message',
+                text: text,
+            }));
+            chatInput.value = '';
+            chatInput.focus();
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // ========== 启动连接 ==========
+        connect();
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,349 @@
+{% extends "chat/base.html" %}
+{% load static %}
+
+{% block title %}脚本管理 - 房间 {{ room_name }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; gap: 16px; flex-wrap: wrap;">
+    {# ===== 左侧：用户列表和订阅管理 ===== #}
+    <div style="flex: 1; min-width: 280px;">
+        <div class="card">
+            <div class="card-title">
+                👥 在线用户
+                <button id="refreshUsersBtn" class="btn btn-sm btn-primary">刷新</button>
+            </div>
+            <ul id="userList" class="user-list">
+                <li style="color: #64748b; font-size: 13px; justify-content: center;">等待连接...</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <div class="card-title">👁️ 正在查看的用户</div>
+            <ul id="viewingList" class="user-list">
+                <li style="color: #64748b; font-size: 13px; justify-content: center;">尚未订阅任何用户</li>
+            </ul>
+        </div>
+    </div>
+
+    {# ===== 中间：用户消息面板（订阅后显示） ===== #}
+    <div style="flex: 2; min-width: 300px;">
+        <div class="card">
+            <div class="card-title">
+                💬 用户消息
+                <span id="viewingUser" style="font-size: 13px; color: #94a3b8; margin-left: 8px;">（未选择用户）</span>
+                <span id="scriptStatus" style="font-size: 12px; color: #f59e0b; margin-left: auto;">连接中...</span>
+            </div>
+            <div id="userMessages" class="messages"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">📢 广播消息</div>
+            <div class="input-area">
+                <input type="text" id="broadcastInput" placeholder="输入广播消息，发送给房间所有用户...">
+                <button id="broadcastBtn" class="btn btn-danger btn-sm">广播</button>
+            </div>
+        </div>
+    </div>
+
+    {# ===== 右侧：私聊区域 ===== #}
+    <div style="flex: 1.5; min-width: 280px;">
+        <div class="card">
+            <div class="card-title">
+                💌 私聊
+                <span id="privateTarget" style="font-size: 13px; color: #94a3b8; margin-left: 8px;">（未选择用户）</span>
+            </div>
+            <div id="privateMessages" class="messages" style="height: 250px;"></div>
+            <div class="input-area">
+                <input type="text" id="privateInput" placeholder="输入私聊消息...">
+                <button id="privateBtn" class="btn btn-success btn-sm">发送</button>
+            </div>
+            <p id="privateHint" style="font-size: 12px; color: #64748b; margin-top: 8px;">
+                💡 点击用户列表中的"私聊"按钮选择私聊对象
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const roomName = "{{ room_name|escapejs }}";
+
+        // DOM 元素
+        const userListEl = document.getElementById('userList');
+        const viewingListEl = document.getElementById('viewingList');
+        const userMessagesEl = document.getElementById('userMessages');
+        const privateMessagesEl = document.getElementById('privateMessages');
+        const broadcastInput = document.getElementById('broadcastInput');
+        const broadcastBtn = document.getElementById('broadcastBtn');
+        const privateInput = document.getElementById('privateInput');
+        const privateBtn = document.getElementById('privateBtn');
+        const statusEl = document.getElementById('scriptStatus');
+        const viewingUserEl = document.getElementById('viewingUser');
+        const privateTargetEl = document.getElementById('privateTarget');
+        const refreshBtn = document.getElementById('refreshUsersBtn');
+        const privateHint = document.getElementById('privateHint');
+
+        // 状态
+        let ws = null;
+        let reconnectTimer = null;
+        let currentViewingUser = null;   // 当前查看消息的用户
+        let currentPrivateTarget = null; // 当前私聊对象
+        let users = [];                  // 在线用户列表
+
+        // ========== WebSocket 连接 ==========
+        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const wsUrl = `${protocol}${window.location.host}/ws/chat/${roomName}/?type=script`;
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            statusEl.textContent = '连接中...';
+            statusEl.style.color = '#f59e0b';
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                statusEl.textContent = '✅ 已连接';
+                statusEl.style.color = '#22c55e';
+                // 获取用户列表
+                requestUserList();
+            };
+
+            ws.onclose = function() {
+                statusEl.textContent = '❌ 已断开，重连中...';
+                statusEl.style.color = '#ef4444';
+                scheduleReconnect();
+            };
+
+            ws.onerror = function() {
+                statusEl.textContent = '⚠️ 连接错误';
+                statusEl.style.color = '#ef4444';
+            };
+
+            ws.onmessage = function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    handleMessage(data);
+                } catch (err) {
+                    console.error('消息解析失败:', err);
+                }
+            };
+        }
+
+        function scheduleReconnect() {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connect, 3000);
+        }
+
+        function sendJson(data) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+            }
+        }
+
+        function requestUserList() {
+            sendJson({ type: 'script.list_users' });
+        }
+
+        // ========== 消息处理 ==========
+        function handleMessage(data) {
+            const type = data.type;
+
+            switch (type) {
+                case 'script.user_list':
+                    users = data.users || [];
+                    renderUserList();
+                    renderViewingList();
+                    break;
+
+                case 'script.user_message':
+                    // 用户消息正在被查看
+                    appendUserMessage(data.username, data.text, data.timestamp);
+                    break;
+
+                case 'script.history':
+                    // 消息历史
+                    userMessagesEl.innerHTML = '';
+                    const msgs = data.messages || [];
+                    if (msgs.length === 0) {
+                        appendUserMessage('系统', `暂无 ${data.username} 的消息记录`, '', '');
+                    } else {
+                        msgs.forEach(m => appendUserMessage(m.username, m.text, m.timestamp));
+                    }
+                    break;
+
+                case 'script.private':
+                    // 私聊消息
+                    appendPrivateMessage(data.from, data.text, data.timestamp);
+                    break;
+
+                case 'chat.message':
+                    // 如果脚本没有专门查看某用户，但有用户发消息，忽略
+                    break;
+
+                case 'system.info':
+                    // 系统消息追加到用户消息面板
+                    appendUserMessage('系统', data.text, '', 'msg-system');
+                    // 刷新用户列表（可能有用户加入/离开）
+                    requestUserList();
+                    break;
+
+                case 'error':
+                    appendUserMessage('⚠️ 错误', data.text, '', 'msg-system');
+                    break;
+            }
+        }
+
+        // ========== 渲染用户列表 ==========
+        function renderUserList() {
+            if (users.length === 0) {
+                userListEl.innerHTML = '<li style="color: #64748b; font-size: 13px; justify-content: center;">暂无用户在线</li>';
+                return;
+            }
+            userListEl.innerHTML = users.map(u => `
+                <li>
+                    <span>${escapeHtml(u.username)}</span>
+                    <span class="user-status">● 在线</span>
+                    <span style="display: flex; gap: 4px;">
+                        <button class="btn btn-sm btn-primary" onclick="window._viewUser('${escapeHtml(u.username)}')">查看</button>
+                        <button class="btn btn-sm btn-success" onclick="window._privateUser('${escapeHtml(u.username)}')">私聊</button>
+                    </span>
+                </li>
+            `).join('');
+        }
+
+        // 暴露到全局供 onclick 调用
+        window._viewUser = function(username) {
+            // 取消之前的查看
+            if (currentViewingUser && currentViewingUser !== username) {
+                sendJson({ type: 'script.unview_user', username: currentViewingUser });
+            }
+            currentViewingUser = username;
+            viewingUserEl.textContent = `（查看: ${username}）`;
+            // 请求历史消息
+            sendJson({ type: 'script.view_user', username: username });
+            renderViewingList();
+        };
+
+        window._privateUser = function(username) {
+            currentPrivateTarget = username;
+            privateTargetEl.textContent = `（私聊: ${username}）`;
+            privateHint.textContent = `💬 正在与 ${username} 私聊`;
+            privateMessagesEl.innerHTML = '';  // 清除之前的私聊记录
+            privateInput.focus();
+        };
+
+        function renderViewingList() {
+            // 收集所有正在被查看的用户
+            // 我们只维护 currentViewingUser，但可以显示当前状态
+            if (currentViewingUser) {
+                const exists = users.some(u => u.username === currentViewingUser);
+                if (!exists) {
+                    // 用户已离开
+                    currentViewingUser = null;
+                    viewingUserEl.textContent = '（未选择用户）';
+                }
+            }
+
+            if (currentViewingUser) {
+                viewingListEl.innerHTML = `
+                    <li>
+                        <span>${escapeHtml(currentViewingUser)}</span>
+                        <button class="btn btn-sm btn-danger" onclick="window._unviewUser()">取消查看</button>
+                    </li>
+                `;
+            } else {
+                viewingListEl.innerHTML = '<li style="color: #64748b; font-size: 13px; justify-content: center;">尚未订阅任何用户</li>';
+            }
+        }
+
+        window._unviewUser = function() {
+            if (currentViewingUser) {
+                sendJson({ type: 'script.unview_user', username: currentViewingUser });
+                currentViewingUser = null;
+                viewingUserEl.textContent = '（未选择用户）';
+                userMessagesEl.innerHTML = '<div class="msg msg-system" style="color: #64748b;">已取消查看</div>';
+                renderViewingList();
+            }
+        };
+
+        // ========== 用户消息面板 ==========
+        function appendUserMessage(author, text, timestamp, extraClass) {
+            const div = document.createElement('div');
+            div.className = `msg msg-user ${extraClass || ''}`.trim();
+            let html = '';
+            if (author) {
+                html += `<div class="msg-author">${escapeHtml(author)}</div>`;
+            }
+            html += `<div>${escapeHtml(text)}</div>`;
+            if (timestamp) {
+                html += `<div class="msg-time">${timestamp}</div>`;
+            }
+            div.innerHTML = html;
+            userMessagesEl.appendChild(div);
+            userMessagesEl.scrollTop = userMessagesEl.scrollHeight;
+        }
+
+        // ========== 私聊消息 ==========
+        function appendPrivateMessage(from, text, timestamp) {
+            const div = document.createElement('div');
+            const isSent = from.startsWith('→ ');
+            div.className = `msg ${isSent ? 'msg-private-sent' : 'msg-private'}`;
+            let html = '';
+            if (from) {
+                html += `<div class="msg-author">${escapeHtml(from)}</div>`;
+            }
+            html += `<div>${escapeHtml(text)}</div>`;
+            if (timestamp) {
+                html += `<div class="msg-time">${timestamp}</div>`;
+            }
+            div.innerHTML = html;
+            privateMessagesEl.appendChild(div);
+            privateMessagesEl.scrollTop = privateMessagesEl.scrollHeight;
+        }
+
+        // ========== 事件绑定 ==========
+        // 广播
+        broadcastBtn.addEventListener('click', function() {
+            const text = broadcastInput.value.trim();
+            if (!text) return;
+            sendJson({ type: 'script.broadcast', text: text });
+            broadcastInput.value = '';
+        });
+        broadcastInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') broadcastBtn.click();
+        });
+
+        // 私聊
+        privateBtn.addEventListener('click', function() {
+            const text = privateInput.value.trim();
+            if (!text) { return; }
+            if (!currentPrivateTarget) {
+                alert('请先在用户列表中点击"私聊"选择私聊对象');
+                return;
+            }
+            sendJson({
+                type: 'script.private',
+                target: currentPrivateTarget,
+                text: text,
+            });
+            privateInput.value = '';
+        });
+        privateInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') privateBtn.click();
+        });
+
+        // 刷新用户列表
+        refreshBtn.addEventListener('click', requestUserList);
+
+        // ========== 工具函数 ==========
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ========== 启动 ==========
+        connect();
+    })();
+</script>
+{% endblock %}
