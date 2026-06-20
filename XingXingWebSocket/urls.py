@@ -2,7 +2,7 @@
 URL configuration for XingXingWebSocket project.
 
 URL 路径说明：
-  /xiaoying/admin/              → 聊天室首页（入口，需登录验证）
+  /xiaoying/admin/              → 管理面板首页（密码保护，3次失败后IP封禁）
   /xiaoying/admin/room/<name>/  → 普通用户聊天室
   /xiaoying/admin/script/<name>/→ 脚本管理面板
   /admin/                       → Django 后台管理

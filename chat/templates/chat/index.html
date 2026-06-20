@@ -1,17 +1,86 @@
 {% extends "chat/base.html" %}
 {% load static %}
 
-{% block title %}XingXing WebSocket - 首页{% endblock %}
+{% block title %}XingXing WebSocket - 管理面板{% endblock %}
 
 {% block content %}
-<div style="max-width: 900px; margin: 0 auto;">
-    {# ===== Hero Section ===== #}
-    <div style="text-align: center; padding: 40px 0 32px;">
+<div style="max-width: 960px; margin: 0 auto;">
+    {% if not authenticated %}
+    {# ===== 密码验证 ===== #}
+    <div style="text-align: center; padding: 60px 0 32px;">
         <div style="width: 64px; height: 64px; background: var(--gradient-primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; color: #fff; margin: 0 auto 16px;">
             X
         </div>
-        <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 8px;">XingXing WebSocket 聊天室</h2>
-        <p style="color: var(--text-secondary); font-size: 15px;">实时 WebSocket 通信，支持多房间、脚本管理和私聊</p>
+        <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 6px;">XingXing WebSocket 管理面板</h2>
+        <p class="text-muted text-sm">请输入密码以访问管理面板</p>
+    </div>
+
+    <div style="max-width: 400px; margin: 0 auto;">
+        <div class="card">
+            <div class="card-title">🔐 身份验证</div>
+            <form method="post" class="flex-col gap-sm">
+                {% csrf_token %}
+                <div>
+                    <label for="passwordInput">管理密码</label>
+                    <input type="password" id="passwordInput" name="password" placeholder="请输入管理密码" autofocus required>
+                </div>
+                {% if error %}
+                <div style="background: var(--accent-red-bg); border: 1px solid rgba(239,68,68,0.3); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: var(--accent-red); text-align: center;">
+                    {{ error }}
+                </div>
+                {% endif %}
+                <button type="submit" class="btn btn-primary w-full mt-sm">进入管理面板</button>
+            </form>
+        </div>
+
+        {% if room_list %}
+        {# 未登录时也显示房间公告 #}
+        <div class="card mt-lg">
+            <div class="card-title">📋 当前活跃房间</div>
+            <ul class="user-list">
+                {% for room in room_list %}
+                <li>
+                    <span style="flex:1;">{{ room.name }}</span>
+                    <span class="text-sm text-muted">{{ room.user_count }} 人 · {{ room.script_count }} 脚本</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+    {% else %}
+    {# ===== 已认证：管理面板 ===== #}
+    <div style="text-align: center; padding: 28px 0 24px;">
+        <div style="width: 56px; height: 56px; background: var(--gradient-primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; color: #fff; margin: 0 auto 12px;">
+            X
+        </div>
+        <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 4px;">XingXing WebSocket 管理面板</h2>
+        <p class="text-muted text-sm">实时 WebSocket 通信 · 多房间支持 · 脚本管理</p>
+    </div>
+
+    {# ===== 公告栏：当前活跃房间 ===== #}
+    <div class="card mb-md">
+        <div class="card-title">
+            📋 公告栏 · 当前活跃房间
+            <span class="badge">{{ room_list|length }} 个房间</span>
+        </div>
+        {% if room_list %}
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            {% for room in room_list %}
+            <div style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 10px 14px; display: flex; align-items: center; gap: 10px; flex: 1; min-width: 200px;">
+                <div style="font-size: 20px;">🏠</div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ room.name }}</div>
+                    <div style="font-size: 12px; color: var(--text-muted);">{{ room.user_count }} 人在线 · {{ room.script_count }} 脚本</div>
+                </div>
+                <button class="btn btn-ghost btn-xs" onclick="copyRoomName('{{ room.name|escapejs }}')" title="复制房间号" style="flex-shrink:0;">📋 复制</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-muted text-center" style="padding: 20px 0;">暂无活跃房间，等待用户创建房间...</p>
+        {% endif %}
     </div>
 
     {# ===== 入口卡片 ===== #}
@@ -90,12 +159,14 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
     (function() {
+        {% if authenticated %}
         const BASE_PATH = '{% url "chat:index" %}'.replace(/\/+$/, '');
 
         // 用户表单
@@ -121,6 +192,63 @@
         document.getElementById('usernameInput').addEventListener('change', function() {
             localStorage.setItem('chat_username', this.value);
         });
+        {% endif %}
+
+        // 复制房间号（全局函数）
+        window.copyRoomName = function(name) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(name).then(function() {
+                    showToast(`已复制房间号：${name}`);
+                }).catch(function() {
+                    fallbackCopy(name);
+                });
+            } else {
+                fallbackCopy(name);
+            }
+        };
+
+        function fallbackCopy(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast(`已复制房间号：${text}`);
+            } catch (e) {
+                alert('复制失败，请手动复制：' + text);
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function showToast(msg) {
+            const existing = document.querySelector('.toast-notification');
+            if (existing) existing.remove();
+
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.textContent = msg;
+            Object.assign(toast.style, {
+                position: 'fixed',
+                bottom: '24px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--accent-green)',
+                color: 'var(--accent-green)',
+                padding: '10px 20px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '14px',
+                fontWeight: '500',
+                zIndex: '9999',
+                boxShadow: 'var(--shadow-lg)',
+                animation: 'msgIn 0.3s ease-out',
+            });
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 2500);
+        }
     })();
 </script>
 {% endblock %}
