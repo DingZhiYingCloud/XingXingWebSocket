@@ -4,86 +4,123 @@
 {% block title %}XingXing WebSocket - 首页{% endblock %}
 
 {% block content %}
-<div style="display: flex; gap: 24px; flex-wrap: wrap;">
-    {# ===== 左侧：用户入口 ===== #}
-    <div class="card" style="flex: 1; min-width: 300px;">
-        <div class="card-title">👤 用户登录</div>
-        <form id="userForm" style="display: flex; flex-direction: column; gap: 12px;">
-            <div>
-                <label style="display: block; margin-bottom: 4px; font-size: 13px; color: #94a3b8;">房间名</label>
-                <input type="text" id="roomInput" placeholder="输入房间名，如: lobby" value="lobby" required>
-            </div>
-            <div>
-                <label style="display: block; margin-bottom: 4px; font-size: 13px; color: #94a3b8;">用户名</label>
-                <input type="text" id="usernameInput" placeholder="输入你的昵称" required>
-            </div>
-            <button type="submit" class="btn btn-primary">进入聊天室</button>
-            <p style="font-size: 13px; color: #64748b; margin-top: 8px;">
-                作为普通用户加入房间，与其他用户聊天。
-            </p>
-        </form>
+<div style="max-width: 900px; margin: 0 auto;">
+    {# ===== Hero Section ===== #}
+    <div style="text-align: center; padding: 40px 0 32px;">
+        <div style="width: 64px; height: 64px; background: var(--gradient-primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; color: #fff; margin: 0 auto 16px;">
+            X
+        </div>
+        <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 8px;">XingXing WebSocket 聊天室</h2>
+        <p style="color: var(--text-secondary); font-size: 15px;">实时 WebSocket 通信，支持多房间、脚本管理和私聊</p>
     </div>
 
-    {# ===== 右侧：脚本入口 ===== #}
-    <div class="card" style="flex: 1; min-width: 300px;">
-        <div class="card-title">🤖 脚本管理</div>
-        <form id="scriptForm" style="display: flex; flex-direction: column; gap: 12px;">
-            <div>
-                <label style="display: block; margin-bottom: 4px; font-size: 13px; color: #94a3b8;">房间名</label>
-                <input type="text" id="scriptRoomInput" placeholder="输入要管理的房间名" value="lobby" required>
+    {# ===== 入口卡片 ===== #}
+    <div class="flex gap-lg flex-wrap" style="margin-bottom: 24px;">
+        {# 用户入口 #}
+        <div class="card" style="flex: 1; min-width: 280px;">
+            <div class="card-title">
+                <span style="font-size: 20px;">👤</span> 用户登录
             </div>
-            <button type="submit" class="btn btn-danger">进入管理面板</button>
-            <p style="font-size: 13px; color: #64748b; margin-top: 8px;">
-                脚本可以广播消息、查看用户列表、查看用户消息、私聊用户。
-            </p>
-        </form>
+            <form id="userForm" class="flex-col gap-sm">
+                <div>
+                    <label for="roomInput">房间名</label>
+                    <input type="text" id="roomInput" placeholder="输入房间名，如: lobby" value="lobby" required>
+                </div>
+                <div>
+                    <label for="usernameInput">用户名</label>
+                    <input type="text" id="usernameInput" placeholder="输入你的昵称" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-full mt-sm">进入聊天室</button>
+                <p class="text-sm text-muted mt-sm">
+                    作为普通用户加入房间，与其他用户实时聊天。
+                </p>
+            </form>
+        </div>
+
+        {# 脚本入口 #}
+        <div class="card" style="flex: 1; min-width: 280px;">
+            <div class="card-title">
+                <span style="font-size: 20px;">🤖</span> 脚本管理
+            </div>
+            <form id="scriptForm" class="flex-col gap-sm">
+                <div>
+                    <label for="scriptRoomInput">房间名</label>
+                    <input type="text" id="scriptRoomInput" placeholder="输入要管理的房间名" value="lobby" required>
+                </div>
+                <button type="submit" class="btn btn-danger w-full mt-sm">进入管理面板</button>
+                <p class="text-sm text-muted mt-sm">
+                    广播消息、查看用户列表、订阅用户消息、私聊用户。
+                </p>
+            </form>
+        </div>
+    </div>
+
+    {# ===== 功能说明 ===== #}
+    <div class="card">
+        <div class="card-title"><span style="font-size: 16px;">📖</span> 功能说明</div>
+        <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: 600; color: var(--accent-blue); margin-bottom: 8px; font-size: 14px;">👤 普通用户</div>
+                <ul style="list-style: none; font-size: 13px; color: var(--text-secondary); line-height: 2;">
+                    <li>• 加入房间，实时聊天</li>
+                    <li>• 消息广播给房间其他用户</li>
+                    <li>• 实时查看在线用户列表</li>
+                    <li>• 连接状态自动检测</li>
+                    <li>• 断线自动重连</li>
+                </ul>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: 600; color: var(--accent-orange); margin-bottom: 8px; font-size: 14px;">🤖 脚本管理员</div>
+                <ul style="list-style: none; font-size: 13px; color: var(--text-secondary); line-height: 2;">
+                    <li>• 查看所有在线用户</li>
+                    <li>• 广播消息给所有用户</li>
+                    <li>• 订阅查看用户消息</li>
+                    <li>• 私聊特定用户</li>
+                    <li>• 查看用户消息历史</li>
+                </ul>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: 600; color: var(--accent-green); margin-bottom: 8px; font-size: 14px;">⚡ 技术特性</div>
+                <ul style="list-style: none; font-size: 13px; color: var(--text-secondary); line-height: 2;">
+                    <li>• WebSocket 实时通信</li>
+                    <li>• Django Channels 异步</li>
+                    <li>• 多房间隔离</li>
+                    <li>• 脚本-用户权限分离</li>
+                </ul>
+            </div>
+        </div>
     </div>
 </div>
+{% endblock %}
 
-<div class="card" style="margin-top: 24px;">
-    <div class="card-title">📖 功能说明</div>
-    <div style="font-size: 14px; line-height: 1.8; color: #cbd5e1;">
-        <p><strong>普通用户：</strong></p>
-        <ul style="padding-left: 20px; margin-bottom: 12px;">
-            <li>加入房间后可以发送消息，消息会广播给房间其他用户</li>
-            <li>消息<strong>不会</strong>自动发送给脚本管理员</li>
-        </ul>
-        <p><strong>脚本管理员：</strong></p>
-        <ul style="padding-left: 20px;">
-            <li>进入房间管理面板后可查看所有在线用户</li>
-            <li>可以<strong>广播消息</strong>给房间所有用户</li>
-            <li>可以<strong>查看</strong>特定用户的消息（订阅后实时推送）</li>
-            <li>可以<strong>私聊</strong>特定用户（一对一对话）</li>
-        </ul>
-    </div>
-</div>
-
+{% block extra_scripts %}
 <script>
-    // 从 Django URL 模板标签获取基础路径
-    const BASE_PATH = '{% url "chat:index" %}'.replace(/\/+$/, '');
+    (function() {
+        const BASE_PATH = '{% url "chat:index" %}'.replace(/\/+$/, '');
 
-    // 用户表单提交
-    document.getElementById('userForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const room = document.getElementById('roomInput').value.trim();
-        const username = document.getElementById('usernameInput').value.trim();
-        if (!room || !username) { alert('请填写房间名和用户名'); return; }
-        window.location.href = `${BASE_PATH}/room/${encodeURIComponent(room)}/?username=${encodeURIComponent(username)}`;
-    });
+        // 用户表单
+        document.getElementById('userForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const room = document.getElementById('roomInput').value.trim();
+            const username = document.getElementById('usernameInput').value.trim();
+            if (!room || !username) { alert('请填写房间名和用户名'); return; }
+            window.location.href = `${BASE_PATH}/room/${encodeURIComponent(room)}/?username=${encodeURIComponent(username)}`;
+        });
 
-    // 脚本表单提交
-    document.getElementById('scriptForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const room = document.getElementById('scriptRoomInput').value.trim();
-        if (!room) { alert('请填写房间名'); return; }
-        window.location.href = `${BASE_PATH}/script/${encodeURIComponent(room)}/`;
-    });
+        // 脚本表单
+        document.getElementById('scriptForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const room = document.getElementById('scriptRoomInput').value.trim();
+            if (!room) { alert('请填写房间名'); return; }
+            window.location.href = `${BASE_PATH}/script/${encodeURIComponent(room)}/`;
+        });
 
-    // 自动填充用户名（方便测试）
-    const savedName = localStorage.getItem('chat_username');
-    if (savedName) { document.getElementById('usernameInput').value = savedName; }
-    document.getElementById('usernameInput').addEventListener('change', function() {
-        localStorage.setItem('chat_username', this.value);
-    });
+        // 自动填充用户名
+        const savedName = localStorage.getItem('chat_username');
+        if (savedName) { document.getElementById('usernameInput').value = savedName; }
+        document.getElementById('usernameInput').addEventListener('change', function() {
+            localStorage.setItem('chat_username', this.value);
+        });
+    })();
 </script>
 {% endblock %}

@@ -104,6 +104,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 },
             )
 
+        # 广播更新后的在线用户列表
+        await self.broadcast_user_list()
+
     async def disconnect(self, close_code):
         room = rooms.get(self.room_name)
         if room:
@@ -120,6 +123,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             "text": f"👋 {username} 离开了房间",
                         },
                     )
+
+            # 广播更新后的在线用户列表
+            await self.broadcast_user_list()
 
             # 房间空时清理
             if not room["users"] and not room["scripts"]:
@@ -359,6 +365,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "timestamp": event["timestamp"],
         }))
 
+    async def user_list(self, event):
+        """向客户端发送在线用户列表（广播给所有用户）"""
+        await self.send(text_data=json.dumps({
+            "type": "script.user_list",
+            "users": event["users"],
+        }))
+
     async def script_user_message(self, event):
         """脚本订阅查看的某用户消息"""
         await self.send(text_data=json.dumps({
@@ -379,6 +392,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
     # =========================================================================
     # 辅助方法
     # =========================================================================
+    async def broadcast_user_list(self):
+        """向房间所有用户广播当前在线用户列表"""
+        room = rooms.get(self.room_name)
+        if not room:
+            return
+
+        users = [
+            {"username": uname}
+            for ch, uname in room["users"].items()
+        ]
+
+        await self.channel_layer.group_send(
+            self.room_name,
+            {
+                "type": "user_list",
+                "users": users,
+            },
+        )
+
     async def _send_error(self, text: str):
         await self.send(text_data=json.dumps({
             "type": "error",
