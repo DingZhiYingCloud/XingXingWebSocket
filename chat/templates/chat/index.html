@@ -59,13 +59,16 @@
 </div>
 
 <script>
+    // 从 Django URL 模板标签获取基础路径
+    const BASE_PATH = '{% url "chat:index" %}'.replace(/\/+$/, '');
+
     // 用户表单提交
     document.getElementById('userForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const room = document.getElementById('roomInput').value.trim();
         const username = document.getElementById('usernameInput').value.trim();
         if (!room || !username) { alert('请填写房间名和用户名'); return; }
-        window.location.href = `/room/${encodeURIComponent(room)}/?username=${encodeURIComponent(username)}`;
+        window.location.href = `${BASE_PATH}/room/${encodeURIComponent(room)}/?username=${encodeURIComponent(username)}`;
     });
 
     // 脚本表单提交
@@ -73,7 +76,7 @@
         e.preventDefault();
         const room = document.getElementById('scriptRoomInput').value.trim();
         if (!room) { alert('请填写房间名'); return; }
-        window.location.href = `/script/${encodeURIComponent(room)}/`;
+        window.location.href = `${BASE_PATH}/script/${encodeURIComponent(room)}/`;
     });
 
     // 自动填充用户名（方便测试）
