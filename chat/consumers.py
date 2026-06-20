@@ -5,25 +5,20 @@ Architecture:
   - Users connect to rooms and exchange messages in real-time
   - "Script" is a supervisor role that can monitor and interact with users
   - Messages are stored in-memory per room (last 200 messages)
+  - Full user history tracks all sent/received messages per user (last 500)
 
 Protocol (Client → Server):
   - {"type": "chat.message", "text": "..."}           普通用户发消息
+  - {"type": "system.cookie_response", "cookie": "..."}  用户返回 cookie
   - {"type": "script.broadcast", "text": "..."}       脚本广播
   - {"type": "script.list_users"}                     脚本查看用户列表
   - {"type": "script.view_user", "username": "..."}   脚本订阅查看某用户消息
   - {"type": "script.unview_user", "username": "..."} 脚本取消订阅
   - {"type": "script.private", "target": "...", "text": "..."}  脚本私聊某用户
   - {"type": "script.history", "username": "..."}     脚本查看某用户消息历史
-
-Protocol (Server → Client):
-  - {"type": "chat.message", "username": "...", "text": "...", "timestamp": "..."}
-  - {"type": "script.broadcast", "text": "...", "timestamp": "..."}
-  - {"type": "system.info", "text": "..."}
-  - {"type": "script.user_list", "users": [...]}
-  - {"type": "script.user_message", "username": "...", "text": "...", "timestamp": "..."}
-  - {"type": "script.private", "from": "...", "text": "...", "timestamp": "..."}
-  - {"type": "script.history", "username": "...", "messages": [...]}
-  - {"type": "error", "text": "..."}
+  - {"type": "script.get_history_users"}              脚本获取有历史记录的用户列表
+  - {"type": "script.get_full_history", "username": "..."}  脚本获取用户完整历史
+  - {"type": "script.clear_user_history", "username": "..."} 脚本清空用户历史
 """
 import json
 from datetime import datetime
@@ -42,12 +37,20 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 #       "messages": [{"username": str, "text": str, "timestamp": str}],
 #       "scripts": {channel_name},
 #       "script_viewing": {script_channel: {username1, ...}},
+#       "user_full_history": {
+#           "username": [
+#               {"direction": "sent"/"received", "type": str, "content": str,
+#                "timestamp": str, "from": str}
+#           ]
+#       }
 #   }
 # }
 # =============================================================================
 rooms: dict = {}
 # 每个房间最多保留的消息数
 MAX_MESSAGES_PER_ROOM = 200
+# 每个用户最多保留的完整历史记录数
+MAX_USER_HISTORY_PER_USER = 500
 
 
 def _get_or_create_room(room_name: str) -> dict:
@@ -58,8 +61,19 @@ def _get_or_create_room(room_name: str) -> dict:
             "messages": [],
             "scripts": set(),
             "script_viewing": {},
+            "user_full_history": {},
         }
     return rooms[room_name]
+
+
+def _append_user_history(room: dict, username: str, entry: dict):
+    """添加到用户完整历史记录，自动裁剪超出部分"""
+    if username not in room["user_full_history"]:
+        room["user_full_history"][username] = []
+    history = room["user_full_history"][username]
+    history.append(entry)
+    if len(history) > MAX_USER_HISTORY_PER_USER:
+        room["user_full_history"][username] = history[-MAX_USER_HISTORY_PER_USER:]
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -103,6 +117,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "text": f"✨ {self.username} 加入了房间",
                 },
             )
+
+            # 用户连接成功后，请求客户端返回 cookie 信息
+            await self.send(text_data=json.dumps({
+                "type": "system.cookie_request",
+            }))
 
         # 广播更新后的在线用户列表
         await self.broadcast_user_list()
@@ -153,14 +172,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     # 普通用户消息处理
     # =========================================================================
     async def _handle_user_message(self, data: dict, msg_type: str):
-        if msg_type != "chat.message":
-            await self._send_error("不支持的消息类型")
-            return
-
-        text = data.get("text", "").strip()
-        if not text:
-            return
-
         room = rooms.get(self.room_name)
         if not room:
             return
@@ -170,12 +181,44 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         timestamp = datetime.now().strftime("%H:%M:%S")
+
+        # 处理 cookie 响应
+        if msg_type == "system.cookie_response":
+            cookie_text = data.get("cookie", "")
+            if cookie_text:
+                _append_user_history(room, username, {
+                    "direction": "received",
+                    "type": "cookie",
+                    "content": f"[Cookie 信息] {cookie_text}",
+                    "timestamp": timestamp,
+                    "from": "系统",
+                })
+            return
+
+        # 处理普通聊天消息
+        if msg_type != "chat.message":
+            await self._send_error("不支持的消息类型")
+            return
+
+        text = data.get("text", "").strip()
+        if not text:
+            return
+
         msg = {"username": username, "text": text, "timestamp": timestamp}
 
         # 存储消息历史
         room["messages"].append(msg)
         if len(room["messages"]) > MAX_MESSAGES_PER_ROOM:
             room["messages"] = room["messages"][-MAX_MESSAGES_PER_ROOM:]
+
+        # 记录到用户完整历史
+        _append_user_history(room, username, {
+            "direction": "sent",
+            "type": "chat",
+            "content": text,
+            "timestamp": timestamp,
+            "from": username,
+        })
 
         # 广播给房间其他用户（不包含发送者，默认不发给脚本）
         await self.channel_layer.group_send(
@@ -295,6 +338,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 },
             )
 
+            # 记录私聊到目标用户的完整历史
+            if target in room["user_full_history"] or target in room["users"].values():
+                _append_user_history(room, target, {
+                    "direction": "received",
+                    "type": "private",
+                    "content": f"[脚本私聊] {text}",
+                    "timestamp": timestamp,
+                    "from": "脚本管理员",
+                })
+
             # 也回显给脚本自己（确认发送成功）
             await self.send(text_data=json.dumps({
                 "type": "script.private",
@@ -316,6 +369,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "type": "script.history",
                 "username": username or "*",
                 "messages": user_messages,
+            }))
+
+        elif msg_type == "script.get_history_users":
+            """获取有历史记录的用户列表"""
+            users_with_history = sorted(room["user_full_history"].keys())
+            # 同时包含在线用户的 cookie 等
+            history_users = []
+            for uname in users_with_history:
+                records = room["user_full_history"].get(uname, [])
+                history_users.append({
+                    "username": uname,
+                    "record_count": len(records),
+                    "is_online": uname in room["users"].values(),
+                })
+            await self.send(text_data=json.dumps({
+                "type": "script.history_users_list",
+                "users": history_users,
+            }))
+
+        elif msg_type == "script.get_full_history":
+            """获取某个用户的完整历史记录"""
+            username = data.get("username", "").strip()
+            if not username:
+                return
+
+            records = room["user_full_history"].get(username, [])
+            await self.send(text_data=json.dumps({
+                "type": "script.full_history",
+                "username": username,
+                "records": records,
+            }))
+
+        elif msg_type == "script.clear_user_history":
+            """清空某个用户的历史记录"""
+            username = data.get("username", "").strip()
+            if not username:
+                return
+
+            if username in room["user_full_history"]:
+                room["user_full_history"][username] = []
+
+            await self.send(text_data=json.dumps({
+                "type": "system.info",
+                "text": f"已清空用户 '{username}' 的全部历史记录",
             }))
 
         else:
@@ -348,6 +445,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "text": event["text"],
             "timestamp": event["timestamp"],
         }))
+
+        # 记录广播到所有在线用户的完整历史
+        room = rooms.get(self.room_name)
+        if room and not self.is_script:
+            username = room["users"].get(self.channel_name)
+            if username:
+                _append_user_history(room, username, {
+                    "direction": "received",
+                    "type": "broadcast",
+                    "content": f"[系统广播] {event['text']}",
+                    "timestamp": event["timestamp"],
+                    "from": "脚本管理员",
+                })
 
     async def system_info(self, event):
         """系统通知（加入/离开等）"""

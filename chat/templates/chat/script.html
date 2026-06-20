@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="chat-layout">
-    {# ===== 左侧：用户列表和订阅管理 ===== #}
+    {# ===== 左侧：用户列表、订阅管理、历史记录 ===== #}
     <div class="chat-sidebar">
         <div class="card" style="margin-bottom: 12px;">
             <div class="card-title">
@@ -18,15 +18,26 @@
             </ul>
         </div>
 
-        <div class="card">
+        <div class="card" style="margin-bottom: 12px;">
             <div class="card-title">👁️ 正在查看的用户</div>
             <ul id="viewingList" class="user-list">
                 <li class="empty-state">尚未订阅任何用户</li>
             </ul>
         </div>
+
+        {# ===== 新增：历史连接记录板块 ===== #}
+        <div class="card">
+            <div class="card-title">
+                📋 历史连接记录
+                <button id="refreshHistoryBtn" class="btn btn-ghost btn-xs" style="margin-left:auto;" title="刷新">↻</button>
+            </div>
+            <ul id="historyUserList" class="user-list" style="max-height: 200px; overflow-y: auto;">
+                <li class="empty-state">暂无历史记录</li>
+            </ul>
+        </div>
     </div>
 
-    {# ===== 中间：用户消息面板 ===== #}
+    {# ===== 中间：用户消息面板 + 历史详情 ===== #}
     <div class="chat-main" style="max-width: 50%;">
         <div class="card" style="margin-bottom: 12px;">
             <div class="card-title">
@@ -34,6 +45,16 @@
                 <span id="viewingUser" class="text-sm text-muted" style="margin-left: 8px;">（未选择用户）</span>
             </div>
             <div id="userMessages" class="messages" style="height: 350px;"></div>
+        </div>
+
+        {# ===== 新增：历史记录详情面板 ===== #}
+        <div class="card" style="margin-bottom: 12px; display: none;" id="historyDetailPanel">
+            <div class="card-title">
+                📜 历史记录
+                <span id="historyDetailUser" class="text-sm text-muted" style="margin-left: 8px;"></span>
+                <button id="clearHistoryBtn" class="btn btn-danger btn-xs" style="margin-left: auto;">一键清空</button>
+            </div>
+            <div id="historyDetailMessages" class="messages" style="height: 250px;"></div>
         </div>
 
         <div class="card">
@@ -52,10 +73,13 @@
                 💌 私聊
                 <span id="privateTarget" class="text-sm text-muted" style="margin-left: 8px;">（未选择）</span>
             </div>
-            <div id="privateMessages" class="messages" style="flex: 1; min-height: 250px;"></div>
-            <div class="input-area">
-                <input type="text" id="privateInput" placeholder="输入私聊消息..." disabled>
-                <button id="privateBtn" class="btn btn-success btn-sm" disabled>发送</button>
+            {# 私聊消息区域：限制最大高度，超出自动滚动 #}
+            <div id="privateMessages" class="messages" style="flex: 1; min-height: 200px; max-height: 350px;"></div>
+            {# 改用文本域输入框 #}
+            <div class="input-area" style="flex-direction: column; gap: 6px;">
+                <textarea id="privateInput" placeholder="输入私聊消息..." disabled
+                    style="width: 100%; min-height: 60px; max-height: 120px; resize: vertical; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; color: var(--text-color); font-family: inherit; font-size: 14px; outline: none;"></textarea>
+                <button id="privateBtn" class="btn btn-success btn-sm" disabled style="align-self: flex-end;">发送</button>
             </div>
             <p id="privateHint" class="text-sm text-muted mt-sm">
                 💡 点击用户列表中的"私聊"按钮选择对象
@@ -70,7 +94,7 @@
     (function() {
         const roomName = "{{ room_name|escapejs }}";
 
-        // DOM 元素
+        // ========== DOM ==========
         const userListEl = document.getElementById('userList');
         const userCountEl = document.getElementById('userCount');
         const viewingListEl = document.getElementById('viewingList');
@@ -84,13 +108,21 @@
         const privateTargetEl = document.getElementById('privateTarget');
         const refreshBtn = document.getElementById('refreshUsersBtn');
         const privateHint = document.getElementById('privateHint');
+        // 历史记录 DOM
+        const historyUserListEl = document.getElementById('historyUserList');
+        const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+        const historyDetailPanel = document.getElementById('historyDetailPanel');
+        const historyDetailUserEl = document.getElementById('historyDetailUser');
+        const historyDetailMessagesEl = document.getElementById('historyDetailMessages');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 
-        // 状态
+        // ========== 状态 ==========
         let ws = null;
         let reconnectTimer = null;
         let currentViewingUser = null;
         let currentPrivateTarget = null;
         let users = [];
+        let historyUsers = [];
         let userAvatars = {};
 
         const avatarColors = ['blue', 'green', 'purple', 'orange', 'pink', 'teal'];
@@ -126,6 +158,7 @@
 
             ws.onopen = function() {
                 requestUserList();
+                requestHistoryUsers();
             };
 
             ws.onclose = function() {
@@ -159,6 +192,10 @@
             sendJson({ type: 'script.list_users' });
         }
 
+        function requestHistoryUsers() {
+            sendJson({ type: 'script.get_history_users' });
+        }
+
         // ========== 消息处理 ==========
         function handleMessage(data) {
             switch (data.type) {
@@ -186,9 +223,19 @@
                     appendPrivateMessage(data.from, data.text, data.timestamp);
                     break;
 
+                case 'script.history_users_list':
+                    historyUsers = data.users || [];
+                    renderHistoryUserList();
+                    break;
+
+                case 'script.full_history':
+                    renderFullHistory(data.username, data.records || []);
+                    break;
+
                 case 'system.info':
                     appendUserMessage('系统', data.text, '', 'msg-system');
                     requestUserList();
+                    requestHistoryUsers();
                     break;
 
                 case 'error':
@@ -310,6 +357,100 @@
             privateMessagesEl.scrollTop = privateMessagesEl.scrollHeight;
         }
 
+        // ========== 历史连接记录 ==========
+        function renderHistoryUserList() {
+            if (historyUsers.length === 0) {
+                historyUserListEl.innerHTML = '<li class="empty-state">暂无历史记录</li>';
+                return;
+            }
+
+            historyUserListEl.innerHTML = historyUsers.map(u => `
+                <li style="cursor:pointer;" onclick="window._viewHistory('${escapeHtml(u.username)}')">
+                    <div style="display:flex;align-items:center;gap:8px;width:100%;">
+                        <div class="user-avatar ${getAvatarColor(u.username)}" style="width:24px;height:24px;font-size:11px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--avatar-${getAvatarColor(u.username)});color:#fff;flex-shrink:0;">${getInitials(u.username)}</div>
+                        <span class="user-name" style="flex:1;">${escapeHtml(u.username)}</span>
+                        <span class="text-sm text-muted">${u.record_count}条</span>
+                        ${u.is_online ? '<span class="user-status" style="flex-shrink:0;">● 在线</span>' : '<span class="user-status offline" style="flex-shrink:0;">离线</span>'}
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        window._viewHistory = function(username) {
+            sendJson({ type: 'script.get_full_history', username: username });
+        };
+
+        function renderFullHistory(username, records) {
+            historyDetailPanel.style.display = 'block';
+            historyDetailUserEl.textContent = `（${username}）`;
+            historyDetailMessagesEl.innerHTML = '';
+
+            if (records.length === 0) {
+                historyDetailMessagesEl.innerHTML = '<div class="msg msg-system" style="background:transparent;border:none;">暂无记录</div>';
+                return;
+            }
+
+            records.forEach(r => {
+                const div = document.createElement('div');
+                let className = 'msg msg-user';
+                let author = r.from || '';
+                let content = r.content || '';
+
+                // 根据方向设置样式
+                if (r.direction === 'sent') {
+                    className += ' msg-self';
+                } else {
+                    className += ' msg-user';
+                }
+
+                // 根据类型添加图标前缀
+                let typeLabel = '';
+                switch (r.type) {
+                    case 'cookie':
+                        className += ' msg-system';
+                        typeLabel = '🍪 ';
+                        break;
+                    case 'chat':
+                        break;
+                    case 'private':
+                        className += ' msg-private';
+                        typeLabel = '💌 ';
+                        break;
+                    case 'broadcast':
+                        className += ' msg-broadcast';
+                        typeLabel = '📢 ';
+                        break;
+                }
+
+                div.className = className.trim();
+                let html = '';
+                if (author) {
+                    html += `<div class="msg-author">${escapeHtml(author)}</div>`;
+                }
+                html += `<div>${typeLabel}${escapeHtml(content)}</div>`;
+                if (r.timestamp) {
+                    html += `<div class="msg-time">${r.timestamp}</div>`;
+                }
+                div.innerHTML = html;
+                historyDetailMessagesEl.appendChild(div);
+            });
+
+            historyDetailMessagesEl.scrollTop = historyDetailMessagesEl.scrollHeight;
+        }
+
+        // 清空历史按钮
+        clearHistoryBtn.addEventListener('click', function() {
+            const username = historyDetailUserEl.textContent.replace(/[（()）]/g, '').trim();
+            if (!username) return;
+            if (!confirm(`确定要清空 "${username}" 的全部历史记录吗？此操作不可恢复！`)) return;
+            sendJson({ type: 'script.clear_user_history', username: username });
+            historyDetailPanel.style.display = 'none';
+            requestHistoryUsers();
+        });
+
+        // 刷新历史列表
+        refreshHistoryBtn.addEventListener('click', requestHistoryUsers);
+
         // ========== 事件绑定 ==========
         broadcastBtn.addEventListener('click', function() {
             const text = broadcastInput.value.trim();
@@ -331,8 +472,12 @@
             sendJson({ type: 'script.private', target: currentPrivateTarget, text: text });
             privateInput.value = '';
         });
+        // 私聊文本域：Ctrl+Enter 发送
         privateInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') privateBtn.click();
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                privateBtn.click();
+            }
         });
 
         refreshBtn.addEventListener('click', requestUserList);
