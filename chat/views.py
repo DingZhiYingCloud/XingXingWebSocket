@@ -1,5 +1,9 @@
+import json
+from pathlib import Path
+
+from django.conf import settings
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import render
-from django.http import HttpResponseForbidden
 
 from chat.consumers import rooms
 
@@ -99,3 +103,16 @@ def script_panel(request, room_name):
     return render(request, "chat/script.html", {
         "room_name": room_name,
     })
+
+
+def download_config(request):
+    """提供客户端配置文件（支持跨域访问）"""
+    config_path = Path(settings.BASE_DIR) / "chat" / "static" / "chat" / "download_config.json"
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return JsonResponse(data)
+    except FileNotFoundError:
+        return JsonResponse({"error": "Config file not found"}, status=404)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid config file"}, status=500)

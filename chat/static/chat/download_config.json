@@ -1,0 +1,13 @@
+{
+  "app_name": "XingXingWebSocket",
+  "version": "1.0.0",
+  "websocket_url": "wss://xxwebsocket.xyz/ws/chat/",
+  "api_base_url": "https://xxwebsocket.xyz/xiaoying/admin/",
+  "features": {
+    "chat": true,
+    "script_panel": true,
+    "private_message": true,
+    "broadcast": true,
+    "user_history": true
+  }
+}

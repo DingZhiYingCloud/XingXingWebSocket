@@ -544,10 +544,12 @@ server {
     listen 80;
     server_name 你的域名.com;
     
-    # 静态文件
+    # 静态文件（含 CORS 跨域支持）
     location /static/ {
         alias /www/wwwroot/websocket_chat/staticfiles/;
         expires 30d;
+        add_header Access-Control-Allow-Origin "https://noah-admin.site" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
     }
     
     # WebSocket（关键！）

@@ -28,6 +28,9 @@ logs/
 media/
 uploads/
 
+# 静态文件构建产物
+staticfiles/
+
 # 系统文件
 .DS_Store
 Thumbs.db

@@ -43,10 +43,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'channels',
+    'corsheaders',  # 跨域请求支持
     'chat',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # 必须放在最前（CORS 头）
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -145,3 +147,20 @@ CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if os.ge
 
 # 生产环境：关闭浏览器端静态资源缓存指纹
 # STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+
+# =============================================================================
+# CORS 跨域配置
+# 允许 noah-admin.site 跨域访问 /static/ 路径下的文件
+# =============================================================================
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    'https://noah-admin.site',
+).split(',') if os.getenv('CORS_ALLOWED_ORIGINS') else [
+    'https://noah-admin.site',
+]
+
+# 允许所有来源访问静态资源（生产环境注意限制）
+CORS_URLS_REGEX = r'^/static/.*$'
+
+# 允许携带凭证
+CORS_ALLOW_CREDENTIALS = True

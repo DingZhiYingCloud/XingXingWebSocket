@@ -8,4 +8,5 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("room/<str:room_name>/", views.room, name="room"),
     path("script/<str:room_name>/", views.script_panel, name="script_panel"),
+    path("api/config/download_config.json", views.download_config, name="download_config"),
 ]

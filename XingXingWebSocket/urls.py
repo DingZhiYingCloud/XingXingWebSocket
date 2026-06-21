@@ -5,6 +5,7 @@ URL 路径说明：
   /xiaoying/admin/              → 管理面板首页（密码保护，3次失败后IP封禁）
   /xiaoying/admin/room/<name>/  → 普通用户聊天室
   /xiaoying/admin/script/<name>/→ 脚本管理面板
+  /xiaoying/admin/api/config/download_config.json → 客户端配置文件 API（支持跨域）
   /admin/                       → Django 后台管理
   /                             → 简单提示页（防陌生人直接访问）
 """
